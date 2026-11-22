@@ -2147,18 +2147,23 @@ if(/^#connect=[A-Za-z0-9_-]{8,64}$/.test(location.hash)){
 }
 const VAPID_PUBLIC_KEY='BIrIkoeF2u_R43wweVZ4erVc1cf9T0omzBfluIPcMBjZcjzmDeZzGLIOm3pR_W0NoJlzeagZwECC2kC4dueEAPs';
 function vapidKeyBytes(text){const raw=atob(text.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-text.length%4)%4));return Uint8Array.from(raw,c=>c.charCodeAt(0));}
+let pushStep='';
 async function enableAppPush(){
   const standalone=matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
   const ios=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
   if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window))
     return ios&&!standalone?'아이폰은 홈 화면에 추가한 앱에서만 알림을 켤 수 있어요. 맨 위 ‘앱 설치’로 먼저 설치해 주세요.':'이 브라우저는 앱 알림을 지원하지 않아요. 휴대폰의 Chrome(안드로이드)이나 홈 화면 앱(아이폰)에서 켜 주세요.';
-  const permission=await Notification.requestPermission();
+  const within=(promise,ms,step)=>Promise.race([promise,new Promise((_,no)=>setTimeout(()=>no(new Error(step+' 단계 응답 없음')),ms))]);
+  pushStep='권한';
+  const permission=Notification.permission==='granted'?'granted':await within(Notification.requestPermission(),60000,'알림 권한');
   if(permission!=='granted') return '알림이 허용되지 않았어요. 휴대폰 설정에서 ‘건축 채용’ 앱의 알림을 허용한 뒤 다시 눌러 주세요.';
-  const registration=await navigator.serviceWorker.register('sw.js');
+  pushStep='앱 등록';
+  const registration=await within(navigator.serviceWorker.register('sw.js'),20000,'앱 등록');
   const ready=await Promise.race([navigator.serviceWorker.ready.then(()=>true),new Promise(r=>setTimeout(()=>r(false),15000))]);
   if(!ready) return '앱 준비가 끝나지 않았어요. 앱을 완전히 닫았다가 다시 열고 한 번 더 눌러 주세요.';
-  let subscription=await registration.pushManager.getSubscription();
-  if(!subscription) subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:vapidKeyBytes(VAPID_PUBLIC_KEY)});
+  pushStep='알림 구독';
+  let subscription=await within(registration.pushManager.getSubscription(),20000,'알림 구독 확인');
+  if(!subscription) subscription=await within(registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:vapidKeyBytes(VAPID_PUBLIC_KEY)}),30000,'알림 구독');
   phonePush.subscription=subscription.toJSON();
   writeLocal('phone-push',phonePush);
   return '';
@@ -2196,7 +2201,7 @@ function syncFavoritesToPhone(force,note=''){
     xhr.open('POST','https://ntfy.sh/'+encodeURIComponent(phonePush.topic+'-sync'));
     xhr.onload=()=>{const status=document.getElementById('phone-push-status');if(status) status.textContent=xhr.status<300?(note?note+' ':phonePush.subscription?'앱 알림을 켰어요. ':'')+'즐겨찾기 '+favoriteFirms.size+'곳을 보냈어요. 다음 오전 9시 업데이트부터 알림이 와요.':'보내지 못했어요 (오류 '+xhr.status+').';};
     xhr.onerror=()=>{const status=document.getElementById('phone-push-status');if(status) status.textContent='인터넷 연결을 확인해 주세요.';};
-    xhr.send(JSON.stringify({favorites:[...favoriteFirms],subscription:phonePush.subscription||null,device:(navigator.userAgent.match(/iPhone|iPad|Android|Windows|Mac/)||['기기'])[0],at:new Date().toISOString()}));
+    xhr.send(JSON.stringify({favorites:[...favoriteFirms],subscription:phonePush.subscription||null,device:(navigator.userAgent.match(/iPhone|iPad|Android|Windows|Mac/)||['기기'])[0],note:String(note||'').slice(0,200),browser:navigator.userAgent.slice(0,200),perm:('Notification' in window)?Notification.permission:'none',at:new Date().toISOString()}));
     phonePush.lastSync=Date.now();writeLocal('phone-push',phonePush);
     return true;
   }catch{return false;}
