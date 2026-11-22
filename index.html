@@ -713,6 +713,7 @@ form { display: grid; gap: 14px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
+#result-count .side-link { margin-left: 8px; }
 /* ---- 앱 설치 ---- */
 .install-button { padding: 6px 12px !important; font-size: .8rem !important; border-radius: 999px; margin-right: 6px; }
 .install-dialog { max-width: 420px; }
@@ -813,6 +814,7 @@ form { display: grid; gap: 14px; }
           <label class="check toggle-row" id="today-filter"><input id="today" type="checkbox">오늘 등록·수정</label>
           <label class="check toggle-row"><input id="fit-only" type="checkbox">내 프로필 일치 공고만</label>
           <label class="check toggle-row"><input id="show-hidden" type="checkbox">숨긴 공고도 보기</label>
+          <label class="check toggle-row"><input id="hidden-only" type="checkbox"><span id="hidden-only-label">숨긴 공고만 모아 보기</span></label>
         </div>
         <div id="deadline-filter"></div>
         <div id="region-filter"></div>
@@ -2294,6 +2296,7 @@ function setView(){
   els.today.checked=false;
   $('fit-only').checked=false;
   $('show-hidden').checked=false;
+  $('hidden-only').checked=false;
   els.search.value='';
   if(pendingSearch){const search=pendingSearch;pendingSearch=null;fillSearch(search);}
   countryOptions(); render();
@@ -2575,6 +2578,7 @@ function activeChips(){
   if(els.today.checked) add('오늘 등록·수정',()=>{els.today.checked=false;});
   if($('fit-only').checked) add('프로필 일치',()=>{$('fit-only').checked=false;});
   if($('show-hidden').checked) add('숨긴 공고 포함',()=>{$('show-hidden').checked=false;});
+  if($('hidden-only').checked) add('숨긴 공고만',()=>{$('hidden-only').checked=false;});
   for(const key of sideFilterKeys){
     const filter=filters[key];
     if(filter.host.hidden) continue;
@@ -2793,8 +2797,12 @@ function render(){
     const {region,country,type,office,organization,work,track,deadline,companyType,award}=Object.fromEntries(
       Object.entries(filters).map(([key,filter])=>[key,filter.selected()])
     );
-    const fitOnly=$('fit-only').checked, showHidden=$('show-hidden').checked;
-    if(!showHidden){
+    const fitOnly=$('fit-only').checked, showHidden=$('show-hidden').checked, hiddenOnly=$('hidden-only').checked;
+    const hiddenTotal=filtered.filter(job=>hiddenJobs.has(job.id)).length;
+    $('hidden-only-label').textContent='숨긴 공고만 모아 보기'+(hiddenTotal?' ('+hiddenTotal+')':'');
+    if(hiddenOnly){
+      filtered=filtered.filter(job=>hiddenJobs.has(job.id));
+    }else if(!showHidden){
       const before=filtered.length;
       filtered=filtered.filter(job=>!hiddenJobs.has(job.id));
       hiddenCount=before-filtered.length;
@@ -2829,7 +2837,20 @@ function render(){
       return Number(Boolean(changeType(b)))-Number(Boolean(changeType(a))) || recent(b).localeCompare(recent(a)) || a.firm.localeCompare(b.firm,'ko');
     });
   }
-  $('result-count').textContent='공고 '+filtered.length+'건'+(hiddenCount?' · 숨긴 공고 '+hiddenCount+'건 제외':'');
+  const resultCount=$('result-count');
+  if(!isPersonal()&&$('hidden-only').checked){
+    resultCount.replaceChildren(element('span','숨긴 공고 '+filtered.length+'건 '));
+    if(filtered.length) resultCount.append(button('모두 다시 보기','quiet side-link',()=>{
+      for(const job of filtered) hiddenJobs.delete(job.id);
+      writeLocal('hidden',[...hiddenJobs]);
+      $('hidden-only').checked=false;
+      render();
+    }));
+    resultCount.append(button('목록으로 돌아가기','quiet side-link',()=>{$('hidden-only').checked=false;applyFilters();}));
+  }else{
+    resultCount.replaceChildren(element('span','공고 '+filtered.length+'건'+(hiddenCount?' · 숨긴 공고 '+hiddenCount+'건 제외 ':'')));
+    if(hiddenCount) resultCount.append(button('모아 보기','quiet side-link',()=>{$('hidden-only').checked=true;$('show-hidden').checked=false;applyFilters();}));
+  }
   $('filters-done').textContent='공고 '+filtered.length+'건 보기';
   if(!isPersonal()) renderActiveFilters();
   renderPipeline();
@@ -4426,10 +4447,10 @@ calendarForm.addEventListener('submit',event=>{event.preventDefault();changeCale
 
 
 for(const key of ['today','sort']) els[key].addEventListener('change',applyFilters);
-for(const id of ['fit-only','show-hidden']) $(id).addEventListener('change',applyFilters);
+for(const id of ['fit-only','show-hidden','hidden-only']) $(id).addEventListener('change',applyFilters);
 $('filters-reset').addEventListener('click',()=>{
   for(const key of sideFilterKeys) filters[key].set([]);
-  els.search.value='';els.today.checked=false;$('fit-only').checked=false;$('show-hidden').checked=false;
+  els.search.value='';els.today.checked=false;$('fit-only').checked=false;$('show-hidden').checked=false;$('hidden-only').checked=false;
   countryOptions();applyFilters();
 });
 $('save-search').addEventListener('click',()=>{
