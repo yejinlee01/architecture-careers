@@ -1,0 +1,16 @@
+{
+  "name": "건축 채용 지도",
+  "short_name": "건축 채용",
+  "description": "서울·경기, 일본, 유럽, 미국 건축설계 인턴·신입 채용을 한곳에서 확인하세요.",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f5f7",
+  "theme_color": "#f5f5f7",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
