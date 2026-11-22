@@ -2136,7 +2136,9 @@ const prepState=readLocal('prep',{});
    즐겨찾기는 이 브라우저에 저장하고, 휴대폰 푸시를 켜면 목록을 ntfy의 '<주제>-sync' 로 보냅니다.
    매일 업데이트 작업(daily-update\notify.py)이 그 목록을 읽어 새 공고를 '<주제>' 로 알립니다. */
 const favoriteFirms=new Set(readLocal('favorite-firms',[]));
-const phonePush=readLocal('phone-push',{topic:'',lastSync:0});
+const DEFAULT_PUSH_TOPIC='arch-careers-966c8b86f23c';
+const phonePush=readLocal('phone-push',{topic:DEFAULT_PUSH_TOPIC,lastSync:0});
+if(!phonePush.topic&&!phonePush.off) phonePush.topic=DEFAULT_PUSH_TOPIC;
 // 알림 연결 링크(#connect=코드)로 열면 코드를 이 기기에 저장
 if(/^#connect=[A-Za-z0-9_-]{8,64}$/.test(location.hash)){
   phonePush.topic=location.hash.slice(9);phonePush.lastSync=0;
@@ -2153,7 +2155,8 @@ async function enableAppPush(){
   const permission=await Notification.requestPermission();
   if(permission!=='granted') return '알림이 허용되지 않았어요. 휴대폰 설정에서 ‘건축 채용’ 앱의 알림을 허용한 뒤 다시 눌러 주세요.';
   const registration=await navigator.serviceWorker.register('sw.js');
-  await navigator.serviceWorker.ready;
+  const ready=await Promise.race([navigator.serviceWorker.ready.then(()=>true),new Promise(r=>setTimeout(()=>r(false),15000))]);
+  if(!ready) return '앱 준비가 끝나지 않았어요. 앱을 완전히 닫았다가 다시 열고 한 번 더 눌러 주세요.';
   let subscription=await registration.pushManager.getSubscription();
   if(!subscription) subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:vapidKeyBytes(VAPID_PUBLIC_KEY)});
   phonePush.subscription=subscription.toJSON();
@@ -4422,8 +4425,9 @@ $('phone-push-form').addEventListener('submit',async event=>{
   const topic=event.currentTarget.elements.topic.value.trim();
   const status=$('phone-push-status');
   if(topic&&!/^[A-Za-z0-9_-]{8,64}$/.test(topic)){status.textContent='알림 연결 코드는 영문·숫자·-·_ 8~64자예요.';return;}
-  phonePush.topic=topic;phonePush.lastSync=0;writeLocal('phone-push',phonePush);
+  phonePush.topic=topic;phonePush.off=!topic;phonePush.lastSync=0;writeLocal('phone-push',phonePush);
   if(!topic){phonePush.subscription=null;writeLocal('phone-push',phonePush);status.textContent='휴대폰 알림을 껐어요.';return;}
+  syncFavoritesToPhone(true,'알림 권한을 확인하는 중…');
   status.textContent='알림 권한을 확인하는 중…';
   let problem='';
   try{problem=await enableAppPush();}catch(error){problem='앱 알림을 켜지 못했어요 ('+(error.message||error)+').';}
